@@ -12,7 +12,7 @@ volumes:
 services:
 
   openmetadata-server:
-    image: openmetadata/server:1.6.0
+    image: openmetadata/server:1.12.6
     container_name: openmetadata_server
     ports:
       - "8585:8585"   # UI + REST API

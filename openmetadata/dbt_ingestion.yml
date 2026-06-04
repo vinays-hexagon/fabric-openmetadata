@@ -12,11 +12,11 @@ source:
     config:
       type: DBT
       dbtConfigSource:
-        dbtLocalConfig:
-          dbtManifestFilePath: ./target/manifest.json
-          dbtCatalogFilePath: ./target/catalog.json
-          dbtRunResultsFilePath: ./target/run_results.json
-      dbtUpdateDescriptions: true           # sync model/column descriptions from schema.yml
+        dbtConfigType: local
+        dbtManifestFilePath: "${DBT_PROJECT_DIR}/target/manifest.json"
+        dbtCatalogFilePath: "${DBT_PROJECT_DIR}/target/catalog.json"
+        dbtRunResultsFilePath: "${DBT_PROJECT_DIR}/target/run_results.json"
+      dbtUpdateDescriptions: true
       includeTags: true
       dbtClassificationName: dbt_tags
 
@@ -27,7 +27,7 @@ sink:
 workflowConfig:
   loggerLevel: INFO
   openMetadataServerConfig:
-    hostPort: "{{ env('OPENMETADATA_HOST', 'http://localhost:8585/api') }}"
+    hostPort: "${OPENMETADATA_HOST}"
     authProvider: openmetadata
     securityConfig:
       jwtToken: "${OPENMETADATA_JWT_TOKEN}"

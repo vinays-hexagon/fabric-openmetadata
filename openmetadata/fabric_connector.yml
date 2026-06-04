@@ -17,7 +17,7 @@ source:
       hostPort: "${DBT_FABRIC_SERVER}:1433"
       database: "${DBT_FABRIC_DATABASE}"
       connectionArguments:
-        driver: "ODBC Driver 18 for SQL Server"
+        driver: "${ODBC_DRIVER}"
         Authentication: ActiveDirectoryServicePrincipal
         TenantId: "${AZURE_TENANT_ID}"
   sourceConfig:
@@ -37,7 +37,7 @@ sink:
 workflowConfig:
   loggerLevel: INFO
   openMetadataServerConfig:
-    hostPort: "{{ env('OPENMETADATA_HOST', 'http://localhost:8585/api') }}"
+    hostPort: "${OPENMETADATA_HOST}"
     authProvider: openmetadata
     securityConfig:
       jwtToken: "${OPENMETADATA_JWT_TOKEN}"
