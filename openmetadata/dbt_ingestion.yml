@@ -1,0 +1,33 @@
+# OpenMetadata dbt ingestion workflow.
+# Pushes dbt artifacts (manifest.json, catalog.json, run_results.json) to OpenMetadata
+# after every dbt run so models, column lineage, and test results are catalogued.
+#
+# Run locally:  metadata ingest -c openmetadata/dbt_ingestion.yml
+# Run in CI:    same command — OPENMETADATA_HOST and OPENMETADATA_JWT_TOKEN must be set.
+
+source:
+  type: dbt
+  serviceName: fabric_openmetadata          # matches the Fabric service created via fabric_connector.yml
+  sourceConfig:
+    config:
+      type: DBT
+      dbtConfigSource:
+        dbtLocalConfig:
+          dbtManifestFilePath: ./target/manifest.json
+          dbtCatalogFilePath: ./target/catalog.json
+          dbtRunResultsFilePath: ./target/run_results.json
+      dbtUpdateDescriptions: true           # sync model/column descriptions from schema.yml
+      includeTags: true
+      dbtClassificationName: dbt_tags
+
+sink:
+  type: metadata-rest
+  config: {}
+
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: "{{ env('OPENMETADATA_HOST', 'http://localhost:8585/api') }}"
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: "${OPENMETADATA_JWT_TOKEN}"

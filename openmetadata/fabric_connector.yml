@@ -1,0 +1,43 @@
+# OpenMetadata Microsoft Fabric (SQL Server) connector.
+# Crawls the Fabric database to catalogue tables, columns, and row-count profiles.
+# Run once per environment to register the service, then on a schedule for profiling.
+#
+# Run locally:  metadata ingest -c openmetadata/fabric_connector.yml
+# Run in CI:    same command — all ${...} vars must be set as environment variables.
+
+source:
+  type: mssql
+  serviceName: fabric_openmetadata
+  serviceConnection:
+    config:
+      type: Mssql
+      scheme: mssql+pyodbc
+      username: "${AZURE_CLIENT_ID}"
+      password: "${AZURE_CLIENT_SECRET}"
+      hostPort: "${DBT_FABRIC_SERVER}:1433"
+      database: "${DBT_FABRIC_DATABASE}"
+      connectionArguments:
+        driver: "ODBC Driver 18 for SQL Server"
+        Authentication: ActiveDirectoryServicePrincipal
+        TenantId: "${AZURE_TENANT_ID}"
+  sourceConfig:
+    config:
+      type: DatabaseMetadata
+      schemaFilterPattern:
+        includes:
+          - "dbt_.*"          # catalogue all dbt environment schemas
+      tableFilterPattern:
+        excludes:
+          - "elementary_.*"   # exclude any residual elementary tables
+
+sink:
+  type: metadata-rest
+  config: {}
+
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: "{{ env('OPENMETADATA_HOST', 'http://localhost:8585/api') }}"
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: "${OPENMETADATA_JWT_TOKEN}"

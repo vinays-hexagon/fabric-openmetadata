@@ -1,0 +1,183 @@
+name: dbt CI/CD
+
+# Branch strategy (Section 5 — Enterprise Fabric Platform Setup Plan):
+#   feature/*  → PR into dev
+#   dev        → auto-deploy to dbt_dev  + OpenMetadata ingestion
+#   release/qa → auto-deploy to dbt_qa   + OpenMetadata ingestion
+#   main       → auto-deploy to dbt_prod + OpenMetadata ingestion (requires "production" environment approval)
+#   hotfix/*   → PR into main, backport PR into dev
+
+on:
+  pull_request:
+    branches: [dev, 'release/qa', main]
+  push:
+    branches: [dev, 'release/qa', main]
+
+env:
+  DBT_FABRIC_SERVER: ${{ secrets.DBT_FABRIC_SERVER }}
+  DBT_FABRIC_DATABASE: ${{ secrets.DBT_FABRIC_DATABASE }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  OPENMETADATA_HOST: ${{ secrets.OPENMETADATA_HOST }}
+  OPENMETADATA_JWT_TOKEN: ${{ secrets.OPENMETADATA_JWT_TOKEN }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+
+  # ── Runs on every PR — compile only (tables don't exist until dbt run) ────────
+  validate:
+    name: Validate (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ODBC Driver 18 for SQL Server
+        run: |
+          curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --batch --dearmor | sudo tee /usr/share/keyrings/microsoft-prod.gpg > /dev/null
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update -q
+          ACCEPT_EULA=Y sudo apt-get install -yq msodbcsql18 unixodbc-dev
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: dbt deps
+        run: dbt deps --profiles-dir .
+
+      - name: dbt compile
+        run: dbt compile --profiles-dir .
+
+  # ── Push to dev → full run into dbt_dev + ingest to OpenMetadata ─────────────
+  deploy-dev:
+    name: Deploy → Dev
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      DBT_FABRIC_SCHEMA: dbt_dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ODBC Driver 18 for SQL Server
+        run: |
+          curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --batch --dearmor | sudo tee /usr/share/keyrings/microsoft-prod.gpg > /dev/null
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update -q
+          ACCEPT_EULA=Y sudo apt-get install -yq msodbcsql18 unixodbc-dev
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: dbt deps
+        run: dbt deps --profiles-dir .
+
+      - name: dbt seed
+        run: dbt seed --profiles-dir .
+
+      - name: dbt run
+        run: dbt run --profiles-dir .
+
+      - name: dbt test
+        run: dbt test --profiles-dir .
+
+      - name: OpenMetadata — ingest dbt artifacts
+        run: metadata ingest -c openmetadata/dbt_ingestion.yml
+
+  # ── Push to release/qa → full run into dbt_qa + ingest to OpenMetadata ───────
+  deploy-qa:
+    name: Deploy → QA
+    if: github.ref == 'refs/heads/release/qa' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: qa
+    env:
+      DBT_FABRIC_SCHEMA: dbt_qa
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ODBC Driver 18 for SQL Server
+        run: |
+          curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --batch --dearmor | sudo tee /usr/share/keyrings/microsoft-prod.gpg > /dev/null
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update -q
+          ACCEPT_EULA=Y sudo apt-get install -yq msodbcsql18 unixodbc-dev
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: dbt deps
+        run: dbt deps --profiles-dir .
+
+      - name: dbt seed
+        run: dbt seed --profiles-dir .
+
+      - name: dbt run
+        run: dbt run --profiles-dir .
+
+      - name: dbt test
+        run: dbt test --profiles-dir .
+
+      - name: OpenMetadata — ingest dbt artifacts
+        run: metadata ingest -c openmetadata/dbt_ingestion.yml
+
+  # ── Push to main → full run into dbt_prod + ingest (requires manual approval) ─
+  # Gate: create a GitHub Environment named "production" with required reviewers.
+  deploy-prod:
+    name: Deploy → Prod
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DBT_FABRIC_SCHEMA: dbt_prod
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ODBC Driver 18 for SQL Server
+        run: |
+          curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --batch --dearmor | sudo tee /usr/share/keyrings/microsoft-prod.gpg > /dev/null
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update -q
+          ACCEPT_EULA=Y sudo apt-get install -yq msodbcsql18 unixodbc-dev
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: dbt deps
+        run: dbt deps --profiles-dir .
+
+      - name: dbt seed
+        run: dbt seed --profiles-dir .
+
+      - name: dbt run
+        run: dbt run --profiles-dir .
+
+      - name: dbt test
+        run: dbt test --profiles-dir .
+
+      - name: OpenMetadata — ingest dbt artifacts
+        run: metadata ingest -c openmetadata/dbt_ingestion.yml

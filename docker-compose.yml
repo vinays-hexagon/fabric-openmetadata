@@ -1,0 +1,72 @@
+# OpenMetadata local dev stack.
+# Usage: docker compose up -d
+# UI available at http://localhost:8585  (default login: admin / admin)
+# Shut down: docker compose down -v
+
+version: "3.9"
+
+volumes:
+  om-data:
+  es-data:
+
+services:
+
+  openmetadata-server:
+    image: openmetadata/server:1.6.0
+    container_name: openmetadata_server
+    ports:
+      - "8585:8585"   # UI + REST API
+      - "8586:8586"   # gRPC
+    depends_on:
+      mysql:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      DB_DRIVER_CLASS: com.mysql.cj.jdbc.Driver
+      DB_SCHEME: mysql
+      DB_USE_SSL: "false"
+      DB_HOST: mysql
+      DB_PORT: 3306
+      OM_DATABASE: openmetadata_db
+      DB_USER: openmetadata_user
+      DB_USER_PASSWORD: openmetadata_password
+      ELASTICSEARCH_HOST: elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_SCHEME: http
+      SERVER_HOST_API_URL: http://localhost:8585/api
+      AIRFLOW_HOST: "disabled"   # no Airflow for local pilot
+    volumes:
+      - om-data:/opt/openmetadata
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: openmetadata_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: openmetadata_db
+      MYSQL_USER: openmetadata_user
+      MYSQL_PASSWORD: openmetadata_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.2
+    container_name: openmetadata_elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    restart: unless-stopped
